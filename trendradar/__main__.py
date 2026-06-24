@@ -18,7 +18,9 @@ from trendradar.context import AppContext
 from trendradar import __version__
 from trendradar.core import load_config
 from trendradar.crawler import DataFetcher
-from trendradar.knowledge import KnowledgeFetcher, render_knowledge_html, KNOWLEDGE_SOURCES
+from trendradar.knowledge import KnowledgeFetcher, render_knowledge_html, KNOWLEDGE_QUERIES, RSS_SOURCES
+
+import feedparser
 from trendradar.notification.senders import send_to_email
 from trendradar.storage import convert_crawl_results_to_news_data
 
@@ -748,22 +750,32 @@ class NewsAnalyzer:
         return summary_html
 
     def _run_knowledge_pipeline(self) -> None:
-        """运行知识日报流水线：抓取 → 渲染 → 发邮件"""
+        """运行知识日报流水线：微信搜索 + RSS → 渲染 → 发邮件"""
         cfg = self.ctx.config
 
-        # 检查邮件是否配置
         if not (cfg.get("EMAIL_FROM") and cfg.get("EMAIL_PASSWORD") and cfg.get("EMAIL_TO")):
             print("知识日报：邮件未配置，跳过")
             return
 
         print("\n[知识日报] 开始抓取...")
-        try:
-            fetcher = KnowledgeFetcher()
-            knowledge_results = fetcher.fetch_all(KNOWLEDGE_SOURCES)
-        except Exception as e:
-            print(f"知识日报抓取失败: {e}")
-            return
 
+        fetcher = KnowledgeFetcher()
+
+        # 1. 搜狗微信搜索
+        wx_results = []
+        try:
+            wx_results = fetcher.search_all(KNOWLEDGE_QUERIES)
+        except Exception as e:
+            print(f"[知识日报] 微信搜索失败: {e}")
+
+        # 2. 国内 RSS 源
+        rss_results = []
+        try:
+            rss_results = fetcher.fetch_all(RSS_SOURCES)
+        except Exception as e:
+            print(f"[知识日报] RSS 抓取失败: {e}")
+
+        knowledge_results = wx_results + rss_results
         total_items = sum(len(s["items"]) for s in knowledge_results)
         if total_items == 0:
             print("知识日报：未抓取到任何内容，跳过")
@@ -771,11 +783,9 @@ class NewsAnalyzer:
 
         print(f"知识日报：抓取完成，共 {len(knowledge_results)} 个板块、{total_items} 条内容")
 
-        # 生成 HTML
         now_str = self.ctx.format_time()
         html_content = render_knowledge_html(knowledge_results, update_time=now_str)
 
-        # 保存 HTML
         date_folder = self.ctx.format_date()
         output_dir = Path(cfg["STORAGE"].get("LOCAL_DIR", "output"))
         knowledge_dir = output_dir / date_folder / "html"
@@ -785,7 +795,6 @@ class NewsAnalyzer:
             f.write(html_content)
         print(f"知识日报 HTML 已保存: {knowledge_path}")
 
-        # 发送邮件
         print(f"正在发送知识日报邮件到 {cfg['EMAIL_TO']}...")
         try:
             send_to_email(
