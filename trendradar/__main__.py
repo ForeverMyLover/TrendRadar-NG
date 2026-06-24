@@ -761,12 +761,12 @@ class NewsAnalyzer:
 
         fetcher = KnowledgeFetcher()
 
-        # 1. 搜狗微信搜索
-        wx_results = []
+        # 1. Bing 搜索知乎 + 专业论坛干货
+        search_results = []
         try:
-            wx_results = fetcher.search_all(KNOWLEDGE_QUERIES)
+            search_results = fetcher.search_quality(KNOWLEDGE_QUERIES)
         except Exception as e:
-            print(f"[知识日报] 微信搜索失败: {e}")
+            print(f"[知识日报] 搜索失败: {e}")
 
         # 2. 国内 RSS 源
         rss_results = []
@@ -775,7 +775,7 @@ class NewsAnalyzer:
         except Exception as e:
             print(f"[知识日报] RSS 抓取失败: {e}")
 
-        knowledge_results = wx_results + rss_results
+        knowledge_results = search_results + rss_results
         total_items = sum(len(s["items"]) for s in knowledge_results)
         if total_items == 0:
             print("知识日报：未抓取到任何内容，跳过")

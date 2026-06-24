@@ -2,7 +2,7 @@
 """
 知识内容获取器
 
-从搜狗微信搜索抓取公众号文章，覆盖所有知识领域。
+策略：搜索引擎搜知乎/V2EX/掘金等高质量平台，避免公众号低质内容
 """
 
 import hashlib
@@ -18,10 +18,9 @@ from bs4 import BeautifulSoup
 
 
 class KnowledgeFetcher:
-    """知识内容获取器 — 基于搜狗微信搜索"""
+    """知识内容获取器"""
 
     DEFAULT_TIMEOUT = 15
-    BASE_URL = "https://weixin.sogou.com/weixin"
     USER_AGENT = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -38,109 +37,79 @@ class KnowledgeFetcher:
         if proxy_url:
             self.session.proxies = {"http": proxy_url, "https": proxy_url}
 
-    # 低质量标题过滤词
-    LOW_QUALITY_PATTERNS = [
-        "什么是", "如何入门", "新手必看", "小白", "一文读懂",
-        "你必须知道", "惊人", "秒懂", "三分钟", "五分钟",
-        "你应该", "每个人都", "99%", "揭秘", "原来",
-    ]
+    # --- 搜索引擎 + 高质量站点搜索 ---
 
-    def _is_quality_title(self, title: str) -> bool:
-        """过滤标题党、科普入门类文章"""
-        for pattern in self.LOW_QUALITY_PATTERNS:
-            if pattern in title:
-                return False
-        # 标题太短大概率是水货
-        if len(title) < 8:
-            return False
-        return True
-
-    def search_weixin(self, keyword: str, max_items: int = 5) -> List[Dict]:
-        """搜索微信公众号文章"""
+    def search_bing(self, query: str, site: str = "", max_items: int = 5) -> List[Dict]:
+        """通过 Bing 搜索指定站点的高质量内容"""
         try:
-            url = f"{self.BASE_URL}?type=2&query={quote(keyword)}&ie=utf8"
+            search_q = f"site:{site} {query}" if site else query
+            url = f"https://www.bing.com/search?q={quote(search_q)}&setlang=zh-cn&cc=cn"
             resp = self.session.get(url, timeout=self.DEFAULT_TIMEOUT)
             resp.raise_for_status()
 
             soup = BeautifulSoup(resp.content, "html.parser")
             items = []
 
-            for li in soup.select("ul.news-list li"):
+            for result in soup.select("li.b_algo"):
                 if len(items) >= max_items:
                     break
-
-                # 标题和链接
-                title_tag = li.select_one("a[id*=_title_]")
+                title_tag = result.select_one("h2 a")
                 if not title_tag:
                     continue
                 title = title_tag.get_text(strip=True)
-
-                # 质量过滤
-                if not self._is_quality_title(title):
-                    continue
-                # 链接（搜狗的是跳转链接）
                 link = title_tag.get("href", "")
-                if link and link.startswith("/"):
-                    link = "https://weixin.sogou.com" + link
+                snippet_tag = result.select_one(".b_caption p")
+                snippet = snippet_tag.get_text(strip=True)[:250] if snippet_tag else ""
 
-                # 摘要
-                summary_tag = li.select_one("p.txt-info")
-                summary = ""
-                if summary_tag:
-                    summary = summary_tag.get_text(strip=True)[:200]
-
-                # 来源公众号名
-                source_tag = li.select_one("a[id*=_account_]")
-                source = ""
-                if source_tag:
-                    source = source_tag.get_text(strip=True)
-
-                if title:
+                if title and link:
                     items.append({
                         "title": title,
                         "url": link,
-                        "summary": summary,
-                        "source": source or "微信公众号",
+                        "summary": snippet,
+                        "source": urlparse(link).netloc or "web",
                     })
-
             return items
-
         except Exception as e:
-            print(f"  [!] 微信搜索失败 [{keyword}]: {e}")
+            print(f"  [!] Bing 搜索失败 [{query}]: {e}")
             return []
 
-    def search_all(self, queries: List[Dict], max_workers: int = 5) -> List[Dict]:
-        """并发搜索多个关键词，返回按板块组织的结果"""
+    def search_quality(self, queries: List[Dict], max_workers: int = 5) -> List[Dict]:
+        """搜索关键词（Bing 搜知乎优先，微信兜底），按板块组织"""
         results = []
 
-        for query_group in queries:
+        for group in queries:
             section_items = []
-            seen_titles = set()
+            seen_urls = set()
 
-            for kw in query_group["keywords"]:
-                items = self.search_weixin(kw, max_items=5)
+            for kw in group["keywords"]:
+                # 1. Bing 搜索知乎干货（GitHub Actions US IP 可用）
+                items = self.search_bing(kw, site="zhihu.com", max_items=3)
+                if not items:
+                    # 2. Bing 兜底（不限站点）
+                    items = self.search_bing(kw, max_items=3)
+                if not items:
+                    # 3. 搜狗微信兜底（本地中国 IP 可用）
+                    items = self.search_weixin(kw, max_items=3)
                 for item in items:
-                    title_hash = hashlib.md5(item["title"].encode()).hexdigest()
-                    if title_hash not in seen_titles:
-                        seen_titles.add(title_hash)
+                    url_hash = hashlib.md5(item["url"].encode()).hexdigest()
+                    if url_hash not in seen_urls:
+                        seen_urls.add(url_hash)
                         section_items.append(item)
 
-            # 去重后限制数量
-            section_items = section_items[:query_group.get("max_items", 3)]
+            section_items = section_items[:group.get("max_items", 3)]
 
             if section_items:
                 results.append({
-                    "name": query_group["name"],
-                    "category": query_group.get("category", ""),
+                    "name": group["name"],
+                    "category": group.get("category", ""),
                     "items": section_items,
                 })
 
         return results
 
-    # --- RSS 抓取（保留国内直连源） ---
+    # --- RSS 抓取 ---
 
     def fetch_feed(self, url: str, timeout: int = None) -> List[Dict]:
-        """抓取单个 RSS 源"""
         if timeout is None:
             timeout = self.DEFAULT_TIMEOUT
         try:
@@ -163,19 +132,16 @@ class KnowledgeFetcher:
                 })
             return items
         except Exception as e:
-            print(f"  [!] RSS 源失败 [{url}]: {e}")
+            print(f"  [!] RSS 失败 [{url}]: {e}")
             return []
 
     def fetch_all(self, sources: List[Dict], max_workers: int = 5) -> List[Dict]:
-        """并发抓取 RSS 源"""
         feed_map = {}
         all_urls = []
         for idx, source in enumerate(sources):
             for feed_url in source["feeds"]:
                 all_urls.append(feed_url)
-                if idx not in feed_map:
-                    feed_map[idx] = []
-                feed_map[idx].append(feed_url)
+                feed_map.setdefault(idx, []).append(feed_url)
 
         url_results = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
