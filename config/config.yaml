@@ -1,0 +1,44 @@
+report:
+  mode: daily  # 每日汇总模式
+  rank_threshold: 5  # 排名在前5的热点会高亮显示
+  sort_by_position_first: false
+  max_news_per_keyword: 0  # 0表示不限制每个关键词下的新闻数量
+  reverse_content_order: false
+
+notification:
+  push_window:
+    enabled: true
+    push_interval_hours: 12  # 半天推一次
+    time_range:
+      start: "08:00"
+      end: "22:00"
+  webhooks:
+    email_from: ""
+    email_password: ""
+    email_to: ""
+
+push:
+  channels:
+    - email  # 邮件推送
+
+platforms:
+  - id: "toutiao"
+    name: "今日头条"
+  - id: "baidu"
+    name: "百度热搜"
+  - id: "zhihu"
+    name: "知乎"
+  - id: "weibo"
+    name: "微博"
+  - id: "bilibili-hot-search"
+    name: "B站热搜"
+  - id: "douyin"
+    name: "抖音"
+  - id: "wallstreetcn-hot"
+    name: "华尔街见闻"
+  - id: "cls-hot"
+    name: "财联社"
+
+filters:
+  include_keywords: []  # 你可以填入想关注的词，如 ["AI", "股市"]
+  exclude_keywords: []  # 你可以填入想屏蔽的词，如 ["游戏", "娱乐"]
