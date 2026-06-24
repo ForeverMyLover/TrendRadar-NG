@@ -173,6 +173,53 @@ class KnowledgeFetcher:
                 })
         return results
 
+    # --- 搜狗微信搜索（兜底） ---
+
+    LOW_QUALITY_PATTERNS = [
+        "什么是", "如何入门", "新手必看", "小白", "一文读懂",
+        "你必须知道", "惊人", "秒懂", "三分钟", "五分钟",
+        "你应该", "每个人都", "99%", "揭秘", "原来",
+    ]
+
+    def _is_quality_title(self, title: str) -> bool:
+        for pattern in self.LOW_QUALITY_PATTERNS:
+            if pattern in title:
+                return False
+        return len(title) >= 8
+
+    def search_weixin(self, keyword: str, max_items: int = 5) -> List[Dict]:
+        try:
+            url = f"https://weixin.sogou.com/weixin?type=2&query={quote(keyword)}&ie=utf8"
+            resp = self.session.get(url, timeout=self.DEFAULT_TIMEOUT)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.content, "html.parser")
+            items = []
+            for li in soup.select("ul.news-list li"):
+                if len(items) >= max_items:
+                    break
+                title_tag = li.select_one("a[id*=_title_]")
+                if not title_tag:
+                    continue
+                title = title_tag.get_text(strip=True)
+                if not self._is_quality_title(title):
+                    continue
+                link = title_tag.get("href", "")
+                if link and link.startswith("/"):
+                    link = "https://weixin.sogou.com" + link
+                summary_tag = li.select_one("p.txt-info")
+                summary = summary_tag.get_text(strip=True)[:200] if summary_tag else ""
+                if title:
+                    items.append({
+                        "title": title,
+                        "url": link,
+                        "summary": summary,
+                        "source": "微信公众号",
+                    })
+            return items
+        except Exception as e:
+            print(f"  [!] 微信搜索失败 [{keyword}]: {e}")
+            return []
+
     @staticmethod
     def _strip_html(text: str) -> str:
         text = re.sub(r"<[^>]+>", "", text)
