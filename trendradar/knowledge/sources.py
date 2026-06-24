@@ -8,17 +8,6 @@
 # 搜狗微信搜索 — 用精准长尾词抓干货
 KNOWLEDGE_QUERIES = [
     {
-        "name": "🔧 机务与民航",
-        "category": "机务",
-        "keywords": [
-            "机务维修 经验",
-            "民航机务 职业发展",
-            "飞机维修 技术",
-            "机务工程师 工作",
-        ],
-        "max_items": 3,
-    },
-    {
         "name": "💼 转岗与职场",
         "category": "转岗",
         "keywords": [
@@ -76,10 +65,11 @@ KNOWLEDGE_QUERIES = [
     {
         "name": "🏠 成都双流房源",
         "category": "房源",
+        "platforms": ["ke.com", "lianjia.com", "anjuke.com"],
         "keywords": [
-            "成都双流 租房 攻略",
-            "成都 买房 地段分析",
-            "成都 房价 走势",
+            "成都双流 租房",
+            "双流 小区 推荐",
+            "成都 双流 房价 走势",
         ],
         "max_items": 3,
     },

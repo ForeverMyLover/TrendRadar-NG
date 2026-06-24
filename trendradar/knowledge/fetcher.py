@@ -81,14 +81,17 @@ class KnowledgeFetcher:
             section_items = []
             seen_urls = set()
 
+            # 是否有指定平台（如房源走贝壳/链家）
+            platforms = group.get("platforms", [])
             for kw in group["keywords"]:
-                # 1. Bing 搜索知乎干货（GitHub Actions US IP 可用）
-                items = self.search_bing(kw, site="zhihu.com", max_items=3)
+                items = []
+                if platforms:
+                    # 在指定专业平台搜索
+                    for plat in platforms:
+                        site_items = self.search_bing(kw, site=plat, max_items=2)
+                        items += site_items
+                # 通用搜索兜底
                 if not items:
-                    # 2. Bing 兜底（不限站点）
-                    items = self.search_bing(kw, max_items=3)
-                if not items:
-                    # 3. 搜狗微信兜底（本地中国 IP 可用）
                     items = self.search_weixin(kw, max_items=3)
                 for item in items:
                     url_hash = hashlib.md5(item["url"].encode()).hexdigest()
