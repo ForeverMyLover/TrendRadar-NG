@@ -30,11 +30,12 @@ jobs:
 
       - name: Start RSSHub
         run: |
-          npx -y rsshub --port 1200 &
-          for i in $(seq 1 30); do
+          docker run -d --name rsshub -p 1200:1200 diygod/rsshub:latest
+          for i in $(seq 1 60); do
             curl -s http://localhost:1200 > /dev/null 2>&1 && echo "RSSHub ready (${i}s)" && break
-            sleep 1
+            sleep 2
           done
+          curl -s http://localhost:1200 | head -3
 
       - name: Run TrendRadar
         env:
