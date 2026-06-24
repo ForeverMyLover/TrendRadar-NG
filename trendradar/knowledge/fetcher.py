@@ -38,6 +38,23 @@ class KnowledgeFetcher:
         if proxy_url:
             self.session.proxies = {"http": proxy_url, "https": proxy_url}
 
+    # 低质量标题过滤词
+    LOW_QUALITY_PATTERNS = [
+        "什么是", "如何入门", "新手必看", "小白", "一文读懂",
+        "你必须知道", "惊人", "秒懂", "三分钟", "五分钟",
+        "你应该", "每个人都", "99%", "揭秘", "原来",
+    ]
+
+    def _is_quality_title(self, title: str) -> bool:
+        """过滤标题党、科普入门类文章"""
+        for pattern in self.LOW_QUALITY_PATTERNS:
+            if pattern in title:
+                return False
+        # 标题太短大概率是水货
+        if len(title) < 8:
+            return False
+        return True
+
     def search_weixin(self, keyword: str, max_items: int = 5) -> List[Dict]:
         """搜索微信公众号文章"""
         try:
@@ -58,6 +75,9 @@ class KnowledgeFetcher:
                     continue
                 title = title_tag.get_text(strip=True)
 
+                # 质量过滤
+                if not self._is_quality_title(title):
+                    continue
                 # 链接（搜狗的是跳转链接）
                 link = title_tag.get("href", "")
                 if link and link.startswith("/"):
